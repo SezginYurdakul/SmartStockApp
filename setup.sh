@@ -146,45 +146,47 @@ if [ -d "backend" ]; then
     echo -e "${GREEN}  ✓ Backend configuration completed${NC}"
 fi
 
-echo ""
-echo -e "${BLUE}Step 2: Creating React Frontend...${NC}"
+# Only create frontend for Full-stack mode
+if [ "$INSTALL_TYPE" = "1" ]; then
+    echo ""
+    echo -e "${BLUE}Step 2: Creating React Frontend...${NC}"
 
-if [ ! -d "frontend" ]; then
-    echo "  - Creating Vite React project..."
-    docker run --rm -v "$(pwd)":/app -w /app node:20-alpine sh -c "npm create vite@latest frontend -- --template react"
-    echo -e "${GREEN}  ✓ Frontend project created${NC}"
-else
-    echo -e "${YELLOW}  ! Frontend directory already exists${NC}"
-fi
+    if [ ! -d "frontend" ]; then
+        echo "  - Creating Vite React project..."
+        docker run --rm -v "$(pwd)":/app -w /app node:20-alpine sh -c "npm create vite@latest frontend -- --template react"
+        echo -e "${GREEN}  ✓ Frontend project created${NC}"
+    else
+        echo -e "${YELLOW}  ! Frontend directory already exists${NC}"
+    fi
 
-echo ""
-echo -e "${BLUE}Step 3: Installing Frontend Dependencies...${NC}"
+    echo ""
+    echo -e "${BLUE}Step 3: Installing Frontend Dependencies...${NC}"
 
-if [ -d "frontend" ]; then
-    echo "  - Installing npm packages..."
-    docker run --rm -v "$(pwd)/frontend":/app -w /app node:20-alpine sh -c "
-        npm install && \
-        npm install -D tailwindcss@^3 postcss autoprefixer && \
-        npm install react-router-dom axios @tanstack/react-query
+    if [ -d "frontend" ]; then
+        echo "  - Installing npm packages..."
+        docker run --rm -v "$(pwd)/frontend":/app -w /app node:20-alpine sh -c "
+            npm install && \
+            npm install -D tailwindcss@^3 postcss autoprefixer && \
+            npm install react-router-dom axios @tanstack/react-query
+        "
+
+        echo "  - Initializing Tailwind CSS..."
+        docker run --rm -v "$(pwd)/frontend":/app -w /app node:20-alpine sh -c "npx tailwindcss init -p"
+
+        echo -e "${GREEN}  ✓ Frontend dependencies installed${NC}"
+    else
+        echo -e "${YELLOW}  ! Frontend directory not found${NC}"
+    fi
+
+    echo ""
+    echo -e "${BLUE}Step 4: Configuring Frontend...${NC}"
+
+    # Create frontend .env and update config files via Docker
+    docker run --rm -v "$(pwd)/frontend":/app -w /app alpine:latest sh -c "
+      echo 'VITE_API_URL=http://localhost:8888/api/v1' > .env
     "
 
-    echo "  - Initializing Tailwind CSS..."
-    docker run --rm -v "$(pwd)/frontend":/app -w /app node:20-alpine sh -c "npx tailwindcss init -p"
-
-    echo -e "${GREEN}  ✓ Frontend dependencies installed${NC}"
-else
-    echo -e "${YELLOW}  ! Frontend directory not found${NC}"
-fi
-
-echo ""
-echo -e "${BLUE}Step 4: Configuring Frontend...${NC}"
-
-# Create frontend .env and update config files via Docker
-docker run --rm -v "$(pwd)/frontend":/app -w /app alpine:latest sh -c "
-  echo 'VITE_API_URL=http://localhost:8888/api/v1' > .env
-"
-
-docker run --rm -v "$(pwd)/frontend":/app -w /app alpine:latest sh -c "cat > tailwind.config.js << 'EOFCONFIG'
+    docker run --rm -v "$(pwd)/frontend":/app -w /app alpine:latest sh -c "cat > tailwind.config.js << 'EOFCONFIG'
 /** @type {import('tailwindcss').Config} */
 export default {
   content: [
@@ -214,20 +216,28 @@ export default {
 EOFCONFIG
 "
 
-docker run --rm -v "$(pwd)/frontend":/app -w /app alpine:latest sh -c "cat > src/index.css << 'EOFCSS'
+    docker run --rm -v "$(pwd)/frontend":/app -w /app alpine:latest sh -c "cat > src/index.css << 'EOFCSS'
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 EOFCSS
 "
 
-echo -e "${GREEN}  ✓ Frontend configuration completed${NC}"
+    echo -e "${GREEN}  ✓ Frontend configuration completed${NC}"
+else
+    echo ""
+    echo -e "${YELLOW}Step 2-4: Skipping frontend setup (API-only mode)${NC}"
+fi
 
 echo ""
 echo -e "${BLUE}Step 5: Building Docker Images...${NC}"
 
 # Build compose profiles based on selections
 COMPOSE_PROFILES="$DB_TYPE"
+
+if [ "$INSTALL_TYPE" = "1" ]; then
+    COMPOSE_PROFILES="$COMPOSE_PROFILES,frontend"
+fi
 
 if [ "$INSTALL_REDIS" = "y" ]; then
     COMPOSE_PROFILES="$COMPOSE_PROFILES,redis"
@@ -250,6 +260,12 @@ docker compose build
 echo ""
 echo -e "${BLUE}Step 6: Starting Docker Containers...${NC}"
 docker compose up -d
+
+# Remove auto-created frontend/dist directory in API-only mode
+if [ "$INSTALL_TYPE" = "2" ] && [ -d "frontend" ]; then
+    echo "  - Cleaning up frontend directory (API-only mode)..."
+    rm -rf frontend 2>/dev/null || docker run --rm -v "$(pwd)":/app -w /app alpine:latest rm -rf /app/frontend
+fi
 
 echo ""
 echo -e "${BLUE}Step 7: Waiting for services to be ready...${NC}"
@@ -311,7 +327,6 @@ echo ""
 if [ "$INSTALL_TYPE" = "2" ]; then
     echo -e "${BLUE}API-only mode - Backend services:${NC}"
     echo "  - Backend API:      http://localhost:8888/api"
-    echo "  - Laravel Welcome:  http://localhost:8888"
 else
     echo -e "${BLUE}Full-stack mode - All services:${NC}"
     echo "  - Backend API:      http://localhost:8888/api"
