@@ -347,17 +347,6 @@ docker-compose exec php php artisan view:cache
 4. Use environment-specific .env files
 5. Enable Laravel's security features (CSRF, rate limiting)
 
-## 📊 Resource Requirements
-
-### Minimum
-- CPU: 2 cores
-- RAM: 4GB
-- Disk: 10GB
-
-### Recommended
-- CPU: 4 cores
-- RAM: 8GB
-- Disk: 20GB SSD
 
 ## 🐛 Troubleshooting
 
